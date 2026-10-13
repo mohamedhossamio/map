@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Indoor Digital Map - Updated Lab Layout</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        * { box-sizing: border-box; user-select: none; }
+        body, html {
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            background-color: #1e293b;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            overflow: hidden;
+            display: flex; justify-content: center; align-items: center;
+        }
+
+        .phone-frame {
+            position: relative;
+            width: 440px;
+            height: 880px;
+            background: #ffffff;
+            border-radius: 46px;
+            overflow: hidden;
+            box-shadow: 0 25px 60px rgba(0, 0, 0, 0.7), 0 0 0 10px #020617;
+        }
+
+        .notch {
+            position: absolute;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 140px;
+            height: 24px;
+            background: #020617;
+            border-bottom-left-radius: 14px;
+            border-bottom-right-radius: 14px;
+            z-index: 2000;
+        }
+
+        #map {
+            width: 100%;
+            height: 100%;
+            background-color: #f8fafc;
+        }
+
+        .bottom-card {
+            position: absolute;
+            bottom: 22px;
+            left: 18px;
+            right: 18px;
+            height: 58px;
+            background: #f97316;
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 16px;
+            color: #ffffff;
+            font-weight: 600;
+            box-shadow: 0 8px 20px rgba(249, 115, 22, 0.35);
+            z-index: 1000;
+            transition: all 0.3s ease;
+        }
+
+        .bottom-card.in-room {
+            background: #059669;
+            box-shadow: 0 8px 20px rgba(5, 150, 105, 0.4);
+        }
+
+        .left-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .icon-box {
+            width: 24px;
+            height: 24px;
+            background: rgba(255, 255, 255, 0.35);
+            border-radius: 6px;
+        }
+
+        .right-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+        }
+
+        .nav-arrow-circle {
+            width: 28px;
+            height: 28px;
+            background: #ffffff;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #2563eb;
+            font-size: 13px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="phone-frame">
+        <div class="notch"></div>
+        <div id="map"></div>
+
+        <div class="bottom-card" id="status-card">
+            <div class="left-group">
+                <div class="icon-box"></div>
+                <span id="room-display" style="font-size: 15px;">المدخل الرئيسي</span>
+            </div>
+            <div class="right-group">
+                <span id="dist-display" style="font-weight: 600;">0.0 m</span>
+                <div class="nav-arrow-circle">▲</div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        const mapWidth = 1000;
+        const mapHeight = 1500;
+
+        const svgMap = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1500" width="1000" height="1500">
+            <defs>
+                <marker id="door-arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                    <path d="M 0 1 L 8 5 L 0 9 z" fill="#10b981" />
+                </marker>
+                <marker id="entrance-arrow" viewBox="0 0 12 12" refX="8" refY="6" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+                    <path d="M 1 2 L 10 6 L 1 10 z" fill="#0284c7" />
+                </marker>
+            </defs>
+
+            <rect width="1000" height="1500" fill="#f8fafc"/>
+
+            <!-- ================= 1. الأرضيات ================= -->
+            <path d="
+                M 660,165 
+                L 950,165 
+                L 950,420 
+                L 965,420 
+                L 965,900 
+                L 950,900 
+                L 950,1110 
+                L 925,1110 
+                L 925,1230 
+                L 940,1230 
+                L 940,1245 
+                L 940,1400 
+                L 660,1400 
+                Z" 
+                fill="#ffffff"/>
+
+            <polygon points="60,165 660,165 660,760 60,760" fill="#f1f5f9"/>
+            <polygon points="60,772 660,772 660,1350 60,1350" fill="#f1f5f9"/>
+
+            <!-- ================= 2. المستطيلات والطاولات ================= -->
+            <!-- أثاث Lab 227 -->
+            <g id="furniture-lab227">
+                <!-- طاولة الحائط العلوي -->
+                <rect x="180" y="195" width="370" height="45" rx="5" fill="#94a3b8" opacity="0.65"/>
+                
+                <!-- طاولة الحائط الأيسر -->
+                <rect x="80" y="270" width="45" height="380" rx="5" fill="#94a3b8" opacity="0.65"/>
+
+                <!-- طاولة الحائط السفلي -->
+                <rect x="180" y="685" width="370" height="45" rx="5" fill="#94a3b8" opacity="0.65"/>
+
+                <!-- طاولة الحائط الأيمن أسفل الباب (مكان الخط الأحمر) -->
+                <rect x="605" y="400" width="45" height="260" rx="5" fill="#94a3b8" opacity="0.65"/>
+
+                <!-- المستطيل الأصفر الأوسط بعد تطويله -->
+                <rect x="260" y="445" width="210" height="65" rx="8" fill="#f59e0b" opacity="0.85"/>
+
+                <!-- اسم المعمل بارز في أعلى المنتصف -->
+                <rect x="300" y="255" width="130" height="36" rx="8" fill="#1e293b" opacity="0.9"/>
+                <text x="365" y="280" fill="#ffffff" font-size="20" font-family="Arial" font-weight="bold" text-anchor="middle">Lab 227</text>
+            </g>
+
+            <!-- أثاث Lab 226 -->
+            <g id="furniture-lab226">
+                <!-- طاولة الحائط العلوي -->
+                <rect x="180" y="800" width="370" height="45" rx="5" fill="#94a3b8" opacity="0.65"/>
+                
+                <!-- طاولة الحائط الأيسر -->
+                <rect x="80" y="875" width="45" height="380" rx="5" fill="#94a3b8" opacity="0.65"/>
+
+                <!-- طاولة الحائط السفلي -->
+                <rect x="180" y="1280" width="370" height="45" rx="5" fill="#94a3b8" opacity="0.65"/>
+
+                <!-- طاولة الحائط الأيمن أسفل الباب (مكان الخط الأحمر في الصورة) -->
+                <rect x="605" y="1070" width="45" height="260" rx="5" fill="#94a3b8" opacity="0.65"/>
+
+                <!-- المستطيل الأصفر الأوسط بعد تطويله -->
+                <rect x="260" y="1035" width="210" height="65" rx="8" fill="#f59e0b" opacity="0.85"/>
+
+                <!-- اسم المعمل بارز في أعلى المنتصف -->
+                <rect x="300" y="860" width="130" height="36" rx="8" fill="#1e293b" opacity="0.9"/>
+                <text x="365" y="885" fill="#ffffff" font-size="20" font-family="Arial" font-weight="bold" text-anchor="middle">Lab 226</text>
+            </g>
+
+            <!-- ================= 3. الحوائط والكسرات المعمارية ================= -->
+            <g fill="none" stroke="#000000" stroke-width="5" stroke-linecap="square" stroke-linejoin="miter">
+                
+                <line x1="660" y1="165" x2="950" y2="165" />
+
+                <!-- جدار الطرقة الأيمن مع الكسرة والسنة البارزة والفتحة -->
+                <line x1="950" y1="165" x2="950" y2="420" />
+                <line x1="950" y1="420" x2="965" y2="420" />
+                <line x1="965" y1="420" x2="965" y2="900" />
+                <line x1="965" y1="900" x2="950" y2="900" />
+                
+                <path d="
+                    M 950,900 
+                    L 950,1110 
+                    L 925,1110 
+                    L 925,1230 
+                    L 940,1230" />
+                
+                <line x1="950" y1="1310" x2="950" y2="1400" />
+                <line x1="660" y1="1400" x2="950" y2="1400" />
+
+                <!-- حوائط Lab 227 -->
+                <path d="M 60,165 L 250,165 L 250,145 L 450,145 L 450,165 L 660,165" />
+                <path d="
+                    M 60,165 
+                    L 60,240 
+                    L 45,240 
+                    L 45,430 
+                    L 60,430 
+                    L 60,580 
+                    L 45,580 
+                    L 45,690 
+                    L 60,690 
+                    L 60,760" />
+
+                <!-- الجدار الفاصل بين الغرفتين -->
+                <path d="
+                    M 60,760 
+                    L 230,760 
+                    L 230,745 
+                    L 260,745 
+                    L 260,760 
+                    L 430,760 
+                    L 430,745 
+                    L 460,745 
+                    L 460,760 
+                    L 660,760" />
+                <path d="M 60,772 L 660,772" />
+
+                <!-- حوائط Lab 226 -->
+                <path d="
+                    M 60,772 
+                    L 60,880 
+                    L 45,880 
+                    L 45,1080 
+                    L 60,1080 
+                    L 60,1230 
+                    L 45,1230 
+                    L 45,1330 
+                    L 60,1330 
+                    L 60,1350 
+                    L 250,1350 
+                    L 250,1365 
+                    L 350,1365 
+                    L 350,1350 
+                    L 540,1350 
+                    L 540,1365 
+                    L 630,1365 
+                    L 630,1350 
+                    L 660,1350" />
+
+                <!-- جدار الطرقة الداخلي مع الباب العلوي لـ Lab 227 -->
+                <path d="M 660,165 L 660,220 L 640,220 L 640,240 L 660,240" />
+                <path d="M 660,360 L 660,760" />
+                <path d="M 660,772 L 660,900 L 640,900 L 640,920 L 660,920" />
+                <line x1="660" y1="1040" x2="660" y2="1400" />
+            </g>
+
+            <!-- مؤشر فتحة الدخول للطرقة -->
+            <line x1="995" y1="1270" x2="905" y2="1270" stroke="#0284c7" stroke-width="3.5" stroke-linecap="round" marker-end="url(#entrance-arrow)"/>
+            <rect x="910" y="1320" width="85" height="26" rx="5" fill="#0f172a" opacity="0.85"/>
+            <text x="952" y="1337" fill="#38bdf8" font-size="10" font-family="Arial" font-weight="bold" text-anchor="middle">ENTRANCE</text>
+
+            <!-- باب Lab 227 -->
+            <path d="M 660,360 A 120 120 0 0 1 540,240" fill="none" stroke="#60a5fa" stroke-width="2" stroke-dasharray="4,4"/>
+            <line x1="660" y1="360" x2="575" y2="275" stroke="#3b82f6" stroke-width="3.5" stroke-linecap="round"/>
+            <line x1="720" y1="300" x2="620" y2="300" stroke="#10b981" stroke-width="2.5" marker-end="url(#door-arrow)"/>
+            <rect x="575" y="215" width="60" height="20" rx="4" fill="#0f172a" opacity="0.8"/>
+            <text x="605" y="229" fill="#38bdf8" font-size="10" font-family="Arial" font-weight="bold" text-anchor="middle">DOOR باب</text>
+
+            <!-- باب Lab 226 -->
+            <path d="M 660,1040 A 120 120 0 0 1 540,920" fill="none" stroke="#60a5fa" stroke-width="2" stroke-dasharray="4,4"/>
+            <line x1="660" y1="1040" x2="575" y2="955" stroke="#3b82f6" stroke-width="3.5" stroke-linecap="round"/>
+            <line x1="720" y1="980" x2="620" y2="980" stroke="#10b981" stroke-width="2.5" marker-end="url(#door-arrow)"/>
+            <rect x="575" y="895" width="60" height="20" rx="4" fill="#0f172a" opacity="0.8"/>
+            <text x="605" y="909" fill="#38bdf8" font-size="10" font-family="Arial" font-weight="bold" text-anchor="middle">DOOR باب</text>
+
+            <!-- مسمى الطرقة -->
+            <text x="800" y="780" fill="#64748b" font-size="26" font-family="Arial" font-weight="bold" text-anchor="middle" transform="rotate(90 800 780)">CORRIDOR (الطرقة)</text>
+        </svg>`;
+
+        const svgUrl = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgMap);
+
+        const map = L.map('map', {
+            crs: L.CRS.Simple,
+            minZoom: -3,
+            maxZoom: 3,
+            zoomSnap: 0.05,
+            zoomDelta: 0.1,
+            zoomControl: false,
+            attributionControl: false
+        });
+
+        const fullBounds = [[0, 0], [mapHeight, mapWidth]];
+        L.imageOverlay(svgUrl, fullBounds).addTo(map);
+
+        map.fitBounds(fullBounds, {
+            paddingTopLeft: [45, 25],
+            paddingBottomRight: [45, 95]
+        });
+
+        const roomsConfig = {
+            "Lab 227": {
+                bounds: [
+                    [mapHeight - 755, 45], 
+                    [mapHeight - 145, 660]  
+                ],
+                minX: 45,
+                maxX: 660,
+                minSvgY: 145,
+                maxSvgY: 760
+            },
+            "Lab 226": {
+                bounds: [
+                    [mapHeight - 1365, 45], 
+                    [mapHeight - 772, 660] 
+                ],
+                minX: 45,
+                maxX: 660,
+                minSvgY: 772,
+                maxSvgY: 1365
+            }
+        };
+
+        const traceLine = L.polyline([], {
+            color: '#3b82f6',
+            weight: 5,
+            lineCap: 'round',
+            lineJoin: 'round',
+            opacity: 0.95
+        }).addTo(map);
+
+        const halo = L.circle([0, 0], {
+            radius: 35,
+            color: '#60a5fa',
+            fillColor: '#93c5fd',
+            fillOpacity: 0.45,
+            weight: 0
+        }).addTo(map);
+
+        const marker = L.circleMarker([0, 0], {
+            radius: 8,
+            color: '#ffffff',
+            fillColor: '#ef4444',
+            fillOpacity: 1,
+            weight: 3
+        }).addTo(map);
+
+        // مسار النقطة المحدث للمرور الآمن حول المستطيل الأصفر والطاولة الجديدة
+        const waypoints = [
+            { y: mapHeight - 1270, x: 990, name: "خارج فتحة المدخل" },
+            { y: mapHeight - 1270, x: 910, name: "عبر فتحة مدخل الطرقة", isDoorThreshold: true },
+            { y: mapHeight - 1270, x: 790, name: "داخل الطرقة الرئيسية" },
+            { y: mapHeight - 980, x: 790, name: "الطرقة - أمام باب Lab 226" },
+            // عبور باب Lab 226
+            { y: mapHeight - 980, x: 670, name: "عتبة باب Lab 226", isDoorThreshold: true },
+            { y: mapHeight - 980, x: 520, name: "ممر داخل Lab 226", isDoorThreshold: true },
+            { y: mapHeight - 940, x: 200, name: "المساحة المفتوحة أعلى Lab 226" },
+            { y: mapHeight - 1180, x: 200, name: "المساحة المفتوحة أسفل Lab 226" },
+            { y: mapHeight - 980, x: 520, name: "الاقتراب من مخرج Lab 226", isDoorThreshold: true },
+            { y: mapHeight - 980, x: 670, name: "الخروج إلى الطرقة", isDoorThreshold: true },
+            { y: mapHeight - 980, x: 790, name: "العودة للطرقة" },
+            { y: mapHeight - 500, x: 790, name: "الممر باتجاه Lab 227" },
+            { y: mapHeight - 300, x: 790, name: "الطرقة - أمام باب Lab 227 العلوي" },
+            // عبور باب Lab 227
+            { y: mapHeight - 300, x: 670, name: "عتبة باب Lab 227", isDoorThreshold: true },
+            { y: mapHeight - 300, x: 520, name: "ممر علوي داخل Lab 227", isDoorThreshold: true },
+            { y: mapHeight - 360, x: 200, name: "المساحة المفتوحة أعلى Lab 227" },
+            { y: mapHeight - 600, x: 200, name: "المساحة المفتوحة أسفل Lab 227" },
+            { y: mapHeight - 300, x: 520, name: "الاقتراب من مخرج Lab 227", isDoorThreshold: true },
+            { y: mapHeight - 300, x: 670, name: "الخروج إلى الطرقة", isDoorThreshold: true },
+            { y: mapHeight - 300, x: 790, name: "العودة لوسط الطرقة" },
+            { y: mapHeight - 200, x: 790, name: "نهاية الطرقة العلوية" }
+        ];
+
+        let currentWp = 0;
+        let progress = 0;
+        const defaultSpeed = 0.0018; 
+        const doorSpeed = 0.0034; 
+        let walkedPath = [];
+        let currentRoom = null;
+
+        function smoothFocus(targetBounds, padding = [0, 0], duration = 0.8) {
+            map.fitBounds(targetBounds, {
+                paddingTopLeft: padding,
+                paddingBottomRight: [padding[0], padding[1] + 60],
+                animate: true,
+                duration: duration,
+                easeLinearity: 0.1
+            });
+        }
+
+        function checkRealtimePosition(curX, curY) {
+            const svgY = mapHeight - curY;
+            const card = document.getElementById('status-card');
+            let detectedRoom = null;
+
+            if (curX < 660) {
+                if (svgY >= roomsConfig["Lab 227"].minSvgY && svgY <= roomsConfig["Lab 227"].maxSvgY) {
+                    detectedRoom = "Lab 227";
+                } else if (svgY >= roomsConfig["Lab 226"].minSvgY && svgY <= roomsConfig["Lab 226"].maxSvgY) {
+                    detectedRoom = "Lab 226";
+                }
+            }
+
+            if (detectedRoom !== currentRoom) {
+                currentRoom = detectedRoom;
+
+                if (currentRoom) {
+                    card.classList.add('in-room');
+                    map.setMaxBounds(roomsConfig[currentRoom].bounds);
+                    smoothFocus(roomsConfig[currentRoom].bounds, [5, 5], 0.9);
+                } else {
+                    card.classList.remove('in-room');
+                    map.setMaxBounds(null);
+                    smoothFocus(fullBounds, [45, 95], 0.95);
+                }
+            }
+        }
+
+        function animateMotion() {
+            const start = waypoints[currentWp];
+            const end = waypoints[(currentWp + 1) % waypoints.length];
+
+            const currentY = start.y + (end.y - start.y) * progress;
+            const currentX = start.x + (end.x - start.x) * progress;
+
+            marker.setLatLng([currentY, currentX]);
+            halo.setLatLng([currentY, currentX]);
+
+            walkedPath.push([currentY, currentX]);
+            if (walkedPath.length > 200) walkedPath.shift();
+            traceLine.setLatLngs(walkedPath);
+
+            document.getElementById('room-display').innerText = currentRoom ? `داخل ${currentRoom}` : start.name;
+            document.getElementById('dist-display').innerText = `${Math.abs((mapHeight - currentY) / 100).toFixed(1)} m`;
+
+            checkRealtimePosition(currentX, currentY);
+
+            const isCrossingDoor = start.isDoorThreshold && end.isDoorThreshold;
+            const stepSpeed = isCrossingDoor ? doorSpeed : defaultSpeed;
+
+            progress += stepSpeed;
+            if (progress >= 1) {
+                progress = 0;
+                currentWp = (currentWp + 1) % waypoints.length;
+            }
+
+            requestAnimationFrame(animateMotion);
+        }
+
+        animateMotion();
+    </script>
+    <script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./sw.js')
+        .then(reg => console.log('Offline Ready!'))
+        .catch(err => console.log('SW Error:', err));
+    });
+  }
+</script>
+</body>
+</html>
